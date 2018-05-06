@@ -72,11 +72,7 @@ function getResults(record) {
 		});
 	}
 
-	if (
-		!user.hrSent &&
-		record.hr !== 0 &&
-		(record.hr < 50 || record.hr > 120)
-	) {
+	if (!user.hrSent && record.hr !== 0 && (record.hr < 50 || record.hr > 90)) {
 		user.hrSent = true;
 
 		results.push({
@@ -269,4 +265,4 @@ app.get('/callback', (req, res) => {
 		});
 });
 
-app.listen(3000, getDeviceData);
+app.listen(5000, getDeviceData);
