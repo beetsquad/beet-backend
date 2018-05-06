@@ -1,12 +1,19 @@
 const express = require('express');
-const bodyParser = require('body-parser');
 const axios = require('axios');
 const losant = require('losant-rest');
+const FitbitApiClient = require('fitbit-node');
+const moment = require('moment');
 
 const app = express();
 
-app.use(bodyParser.json());
+const fClient = new FitbitApiClient({
+	clientId: '22CRJR',
+	clientSecret: '7d3e2e8b4fdd90ff390ba61119d5fe1a',
+	apiVersion: '1.2',
+});
 
+const fitbitAuth =
+	'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI2TTJNUUIiLCJhdWQiOiIyMkNSSlIiLCJpc3MiOiJGaXRiaXQiLCJ0eXAiOiJhY2Nlc3NfdG9rZW4iLCJzY29wZXMiOiJ3aHIgd3NsZSB3d2VpIiwiZXhwIjoxNTI1NjQyNDc1LCJpYXQiOjE1MjU2MTM2NzV9.NzJjwFyeqjeZttJh1GLDuTbGN42OR7EqbiMCQufOoao';
 axios.defaults.headers.common.Authorization =
 	'Bearer c648ea06-7c64-4a13-95d8-17b87a418669';
 
@@ -16,7 +23,8 @@ const user = {
 	status: 'Good',
 	wasOccupied: null,
 	hrSent: false,
-	rrSent: true,
+	rrSent: false,
+	sleepDataSent: false,
 	identifiers: [
 		{
 			ID: '0000000001',
@@ -28,7 +36,24 @@ const user = {
 		LastName: 'Bixby',
 		DOB: '2008-01-06T00:00:00.000Z',
 	},
-	records: [],
+	records: [
+		{
+			hr: 60,
+			rr: 100,
+			hrv: 90,
+			ss: 2831,
+			status: 2,
+			time: new Date().getTime() + 7200000,
+		},
+		{
+			hr: 60,
+			rr: 100,
+			hrv: 90,
+			ss: 2831,
+			status: 2,
+			time: new Date().getTime(),
+		},
+	],
 };
 
 function getResults(record) {
@@ -112,14 +137,17 @@ function addRecord(record) {
 	}
 }
 
-function analyzeSleepData() {
+function analyzeSleepData(records) {
 	return {
+		startTime: moment(records[records.length - 1].time).format('HH:mm'),
+		duration: records[0].time - records[records.length - 1].time,
 		quality: 3.13,
 	};
 }
 
 function sendSleepData() {
 	const sleepData = analyzeSleepData(user.records);
+	user.records = [];
 
 	axios
 		.post('https://api.redoxengine.com/endpoint', {
@@ -148,45 +176,62 @@ function sendSleepData() {
 			],
 		})
 		.then(() => {
+			user.sleepDataSent = true;
 			console.log('Successfully logged sleep quality to EHR:', 3.13);
 		})
 		.catch(() => {
 			console.log('Failed to log sleep quality to EHR:', 3.13);
 		});
+
+	fClient
+		.post('/sleep.json', fitbitAuth, {
+			date: moment().format('YYYY-MM-DD'),
+			duration: sleepData.duration,
+			startTime: sleepData.startTime,
+		})
+		.then(results => {
+			user.sleepDataSent = true;
+			console.log(results[0]);
+		})
+		.catch(err => {
+			console.log(err);
+		});
 }
 
 function getDeviceData() {
 	setTimeout(() => {
-		const client = losant.createClient();
-		client.auth
+		const lClient = losant.createClient();
+		lClient.auth
 			.authenticateDevice({
 				credentials: {
-					deviceId: '5aedf95eb107570008305734',
-					key: '7472a9c2-dc4f-4d10-964c-0fbb2f7a9ca9',
+					deviceId: '5aef13184fb3b400073acf59',
+					key: '6b71d022-dab7-4ec5-afe1-899d5eeeeeaf',
 					secret:
-						'85f7ee26e81e4f1e0ab3fbd70adc5f07305e68e4c5fea88d047e21b2f1151167',
+						'd86129793c5be5919bea272f7e344ff77465e1fe1f9ea21099f58fbd7fbd1e2b',
 				},
 			})
 			.then(res => {
-				client.setOption('accessToken', res.token);
+				lClient.setOption('accessToken', res.token);
 				const params = {
 					applicationId: res.applicationId,
 					deviceId: res.deviceId,
 				};
 
-				client.device.getState(params).then(r => {
+				lClient.device.getState(params).then(r => {
 					const record = r[0].data;
+
+					console.log(record);
 
 					if (record.occupied && !user.wasOccupied)
 						user.wasOccupied = true;
 
 					if (record.occupied) {
 						record.time = new Date().getTime();
-						console.log(record);
 						addRecord(record);
 					}
 
 					if (!record.occupied && user.wasOccupied) {
+						user.wasOccupied = false;
 						sendSleepData();
 					}
 
@@ -195,5 +240,33 @@ function getDeviceData() {
 			});
 	}, 1000);
 }
+
+app.get('/apiStatus', (req, res) => {
+	res.send({
+		hrSent: user.hrSent,
+		rrSent: user.rrSent,
+		sleepDataSent: user.sleepDataSent,
+	});
+});
+
+app.get('/authorize', (req, res) => {
+	res.redirect(
+		fClient.getAuthorizeUrl(
+			'heartrate sleep weight',
+			'http://localhost:3000/callback',
+		),
+	);
+});
+
+app.get('/callback', (req, res) => {
+	fClient
+		.getAccessToken(req.query.code, 'http://localhost:3000/callback')
+		.then(result => {
+			res.send(result.access_token);
+		})
+		.catch(err => {
+			res.status(err.status).send(err);
+		});
+});
 
 app.listen(3000, getDeviceData);
