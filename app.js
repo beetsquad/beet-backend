@@ -42,6 +42,10 @@ const user = {
 	records: [],
 };
 
+function printColor(text, color) {
+	console.log(`${color}${text}\x1b[0m`);
+}
+
 function getResults(record) {
 	const results = [];
 
@@ -80,7 +84,7 @@ function addRecord(record) {
 	const results = getResults(record);
 
 	if (results.length > 0) {
-		console.log('Abnormal data detected');
+		printColor('Abnormal data detected', '\x1b[33m');
 
 		axios
 			.post('https://api.redoxengine.com/endpoint', {
@@ -102,18 +106,23 @@ function addRecord(record) {
 			})
 			.then(() => {
 				results.forEach(result =>
-					console.log(
-						'Successfully sent message to EHR:',
-						result.Description,
+					printColor(
+						`Successfully sent message to EHR: ${
+							result.Description
+						}`,
+						'\x1b[32m',
 					),
 				);
 			})
 			.catch(() => {
-				results.forEach(result =>
-					console.log(
-						'Failed to send message to EHR:',
-						result.Description,
-					),
+				results.forEach(
+					result =>
+						printColor(
+							`Failed to send message to EHR: ${
+								result.Description
+							}`,
+						),
+					'\x1b[31m',
 				);
 			});
 	}
@@ -128,6 +137,8 @@ function analyzeSleepData(records) {
 }
 
 function sendSleepData() {
+	if (user.records.length <= 0) return;
+
 	const sleepData = analyzeSleepData(user.records);
 	user.records = [];
 
@@ -161,10 +172,18 @@ function sendSleepData() {
 		})
 		.then(() => {
 			user.sleepDataSent = true;
-			console.log('Successfully logged sleep quality to EHR:', 3.13);
+			printColor(
+				`Successfully logged sleep quality to EHR: ${
+					sleepData.quality
+				}`,
+				'\x1b[32m',
+			);
 		})
 		.catch(() => {
-			console.log('Failed to log sleep quality to EHR:', 3.13);
+			printColor(
+				`Failed to log sleep quality to EHR: ${sleepData.quality}`,
+				'\x1b[31m',
+			);
 		});
 
 	fClient
@@ -176,12 +195,12 @@ function sendSleepData() {
 		.then(results => {
 			user.sleepDataSent = true;
 			if (results[0].errors)
-				return console.log(
-					'Failed to log sleep data to FitBit:',
-					results[0].errors,
+				return printColor(
+					`Failed to log sleep data to FitBit: ${results[0].errors}`,
+					'\x1b[31m',
 				);
 
-			console.log('Successfully logged sleep data to FitBit');
+			printColor('Successfully logged sleep data to FitBit', '\x1b[32m');
 		})
 		.catch(err => {
 			console.log(err);
@@ -210,15 +229,19 @@ function getDeviceData() {
 				lClient.device.getState(params).then(r => {
 					const record = r[0].data;
 
-					console.log(record);
+					record.time = new Date().getTime();
+
+					console.log({
+						hr: record.hr,
+						rr: record.rr,
+						time: record.time,
+						occupied: record.occupied,
+					});
 
 					if (record.occupied && !user.wasOccupied)
 						user.wasOccupied = true;
 
-					if (record.occupied) {
-						record.time = new Date().getTime();
-						addRecord(record);
-					}
+					if (record.occupied) addRecord(record);
 
 					if (!record.occupied && user.wasOccupied) {
 						user.wasOccupied = false;
