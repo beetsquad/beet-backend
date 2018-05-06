@@ -39,30 +39,13 @@ const user = {
 		LastName: 'Bixby',
 		DOB: '2008-01-06T00:00:00.000Z',
 	},
-	records: [
-		{
-			hr: 60,
-			rr: 100,
-			hrv: 90,
-			ss: 2831,
-			status: 2,
-			time: new Date().getTime() + 7200000,
-		},
-		{
-			hr: 60,
-			rr: 100,
-			hrv: 90,
-			ss: 2831,
-			status: 2,
-			time: new Date().getTime(),
-		},
-	],
+	records: [],
 };
 
 function getResults(record) {
 	const results = [];
 
-	if ((!user.rrSent && record.rr > 15) || record.rr < 6) {
+	if (!user.rrSent && record.rr !== 0 && (record.rr > 15 || record.rr < 6)) {
 		user.rrSent = true;
 
 		results.push({
@@ -148,6 +131,8 @@ function sendSleepData() {
 	const sleepData = analyzeSleepData(user.records);
 	user.records = [];
 
+	console.log('sleepData:', sleepData);
+
 	axios
 		.post('https://api.redoxengine.com/endpoint', {
 			Meta: {
@@ -190,7 +175,13 @@ function sendSleepData() {
 		})
 		.then(results => {
 			user.sleepDataSent = true;
-			console.log(results[0]);
+			if (results[0].errors)
+				return console.log(
+					'Failed to log sleep data to FitBit:',
+					results[0].errors,
+				);
+
+			console.log('Successfully logged sleep data to FitBit');
 		})
 		.catch(err => {
 			console.log(err);
