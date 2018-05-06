@@ -3,8 +3,11 @@ const axios = require('axios');
 const losant = require('losant-rest');
 const FitbitApiClient = require('fitbit-node');
 const moment = require('moment');
+const cors = require('./middleware/cors');
 
 const app = express();
+
+app.use(cors);
 
 const fClient = new FitbitApiClient({
 	clientId: '22CRJR',
